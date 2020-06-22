@@ -1,16 +1,11 @@
-#!/usr/bin/python3
+#!/usr/bin/python3.8
 import argparse
-from itertools import product
 from multiprocessing import Pool, Manager
-from collections import namedtuple
 from queue import Empty
-
-from ortools.sat.python import cp_model
-
-Rectangle = namedtuple(
-    "Rectangle",
-    ['xl', 'yb', 'xr', 'yt'],
-    defaults=(None,) * 4
+from sat_solver import (
+    Rectangle,
+    print_rectangle,
+    is_colorable
 )
 
 
@@ -51,32 +46,6 @@ def gen_grid_dims(rect):
         x += 1
 
 
-def run_sat_solver_for_size(colors, xbound, ybound):
-    model = cp_model.CpModel()
-    rectangle = [
-        [
-            model.NewIntVar(0, colors-1, f"ind{x}{y}")
-            for y in range(ybound)
-        ]
-        for x in range(xbound)
-    ]
-
-    # create column-wise contraints for each row
-    half_color = []
-    for row in rectangle:
-        row1 = []
-        for (ind, col1) in enumerate(row[:-1]):
-            row2 = []
-            for col2 in row[col1+1:]:
-                row2.append(...)
-            row1.append(row2)
-        half_color.append(row1)
-
-
-def format_coloring(coloring):
-    return None
-
-
 def search_for_obs_set(
         obs_queue,
         gen_queue,
@@ -92,9 +61,8 @@ def search_for_obs_set(
             return x == bounds.xl or y == bounds.yb or (x, y) in sub_colorings
 
         for x, y in generator:
-            print(sub_colorings)
             print(f"x: {x}, y: {y}")
-            coloring = run_sat_solver_for_size(colors, x, y)
+            coloring = is_colorable(Rectangle(0, 0, x, y), colors)
             if not coloring:
                 print(f"{x}, {y} has no coloring")
                 if has_sub_coloring(x-1, y) and has_sub_coloring(x, y-1):
@@ -108,11 +76,11 @@ def search_for_obs_set(
                     sub_colorings.add((x, y))
             else:
                 print(
-                    f"{x}, {y} has the following coloring:",
-                    format_coloring(coloring)
+                    f"{x}, {y} has the following coloring:"
                 )
+                print_rectangle(coloring)
+
                 sub_colorings.add((x, y))
-        print("finishing generator", generator)
         gen_queue.task_done()
 
 

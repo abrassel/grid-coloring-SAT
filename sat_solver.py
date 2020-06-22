@@ -4,10 +4,14 @@ from itertools import product, combinations
 from typing import Generator
 from termcolor import colored
 
-Rect = namedtuple('Rect', ['xl', 'xr', 'yl', 'yr'])
+Rectangle = namedtuple(
+    "Rectangle",
+    ['xl', 'yb', 'xr', 'yt'],
+    defaults=(None,) * 4
+)
 
 
-def rectangle_with_color(solver, boolvars):
+def rectangle_with_color(solver, intvars):
     rectangle_with_color.colors = [
         "red",
         "green",
@@ -19,23 +23,18 @@ def rectangle_with_color(solver, boolvars):
         "grey"
     ]
 
-    color_flag = len(boolvars[0][0]) <= len(rectangle_with_color.colors)
-
     rectangle = []
-    for row in boolvars:
+    for row in intvars:
         colored_row = []
         for entry in row:
-            for c, c_var in enumerate(entry):
-                if solver.BooleanValue(c_var):
-                    if color_flag:
-                        colored_row.append(colored(
-                            "●",
-                            color=rectangle_with_color.colors[c])
-                        )
-                    else:
-                        colored_row.append(c)
-                    break
-                return None  # not solvable
+            test = solver.Value(entry)
+            if test < len(rectangle_with_color.colors):
+                colored_row.append(colored(
+                    "●",
+                    color=rectangle_with_color.colors[test])
+                )
+            else:
+                colored_row.append(test)
         rectangle.append(colored_row)
 
     return rectangle
@@ -48,42 +47,63 @@ def print_rectangle(colored_rectangle):
         print(*row, sep=" ", end="\n")
 
 
-def sub_rectangles(rect: Rect) -> Generator[Rect, None, None]:
-    for (xl, xr), (yl, yr) in product(
+def sub_rectangles(rect: Rectangle) -> Generator[Rectangle, None, None]:
+    for (xl, xr), (yb, yt) in product(
             combinations(range(rect.xl, rect.xr), 2),
-            combinations(range(rect.yl, rect.yr), 2),
+            combinations(range(rect.yb, rect.yt), 2),
             ):
-        yield Rect(xl, xr, yl, yr)
+        yield Rectangle(xl, yb, xr, yt)
 
 
-def is_colorable(rect: Rect, ncolors: int) -> bool:
+def is_colorable(rect: Rectangle, ncolors: int) -> bool:
     # create big array of all colors and indices
     model = cp_model.CpModel()
-    boolvars = [
+    intvars = [
         [
-            [
-                model.NewBoolVar(f"{x},{y},{c}")
-                for c in range(ncolors)
-            ]
-            for y in range(rect.yl, rect.yr)
+            model.NewIntVar(0, ncolors-1, f"{x},{y}")
+            for x in range(rect.xl, rect.xr)
         ]
-        for x in range(rect.xl, rect.xr)
+        for y in range(rect.yb, rect.yt)
     ]
 
-    # add edge case for only 1 assignment
-    for row in boolvars:
-        for cell in row:
-            model.AddBoolXOr(cell)
+    # first parameter is y, second parameter is x
+    col_bindings = []
+    for row_idx, row in enumerate(intvars):
+        row_binding = {}  # just easier
+        for (col1idx, col1), (col2idx, col2) in combinations(
+                enumerate(row), 2
+        ):
+            temp = model.NewBoolVar(f"{row_idx},{col1idx},{col2idx}")
+            model.Add(
+                intvars[row_idx][col1idx] == intvars[row_idx][col2idx]
+            ).OnlyEnforceIf(temp)
+            model.Add(
+                intvars[row_idx][col1idx] != intvars[row_idx][col2idx]
+            ).OnlyEnforceIf(temp.Not())
+            row_binding[(col1idx, col2idx)] = temp
+        col_bindings.append(row_binding)
 
-    # assert not all equal for all rectangles
-    for xl, xr, yl, yr in sub_rectangles(rect):
-        for c in range(ncolors):
-            model.AddBoolOr([
-                boolvars[xl][yl][c].Not(),
-                boolvars[xl][yr][c].Not(),
-                boolvars[xr][yl][c].Not(),
-                boolvars[xr][yr][c].Not(),
-            ])
+    # first parameter is x, second parameter is y
+    row_bindings = [dict() for i in range(len(intvars[0]))]
+    for (idx1, row1), (idx2, row2) in combinations(enumerate(intvars), 2):
+        for idx, (col_entry1, col_entry2) in enumerate(zip(row1, row)):
+            temp = model.NewBoolVar(f"{idx},{idx1},{idx2}")
+            model.Add(
+                intvars[idx1][idx] == intvars[idx2][idx]
+            ).OnlyEnforceIf(temp)
+            model.Add(
+                intvars[idx1][idx] != intvars[idx2][idx]
+            ).OnlyEnforceIf(temp.Not())
+            row_bindings[idx][(idx1, idx2)] = temp
+
+    # now state that if L and T are equal, B must not be.
+    for xl, yb, xr, yt in sub_rectangles(rect):
+        model.AddBoolOr([
+            row_bindings[xl][(yb, yt)].Not(),
+            row_bindings[xr][(yb, yt)].Not(),
+            col_bindings[yb][(xl, xr)].Not(),
+            col_bindings[yt][(xl, xr)].Not()
+        ])
 
     solver = cp_model.CpSolver()
     was_successful = solver.Solve(model) in [
@@ -91,6 +111,6 @@ def is_colorable(rect: Rect, ncolors: int) -> bool:
     ]
 
     if was_successful:
-        return rectangle_with_color(solver, boolvars)
+        return rectangle_with_color(solver, intvars)
     else:
         return None
