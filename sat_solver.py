@@ -1,8 +1,10 @@
+#!/usr/bin/env python3
 from ortools.sat.python import cp_model
 from collections import namedtuple
 from itertools import product, combinations
 from typing import Generator
 from termcolor import colored
+import argparse
 
 Rectangle = namedtuple(
     "Rectangle",
@@ -114,3 +116,31 @@ def is_colorable(rect: Rectangle, ncolors: int) -> bool:
         return rectangle_with_color(solver, intvars)
     else:
         return None
+
+
+def buildRectangle(arg: str) -> Rectangle:
+    raw_parts = arg.split("x")
+    if len(raw_parts) != 2:
+        raise argparse.ArgumentTypeError("Width and height must be given, deliminated by an \"x\"")
+
+    try:
+        return Rectangle(0, 0, int(raw_parts[0]), int(raw_parts[1]))
+    except ValueError:
+        raise argparse.ArgumentTypeError("Width and height must be integers")
+
+        
+if __name__ == "__main__":
+    parser = argparse.ArgumentParser()
+    parser.add_argument(
+        "dim",
+        help="width x height i.e. 18x18",
+        type=buildRectangle
+    )
+    parser.add_argument(
+        "colors",
+        help="Give the desired number of colors to use",
+        type=int
+    )
+    args = parser.parse_args()
+
+    print_rectangle(is_colorable(args.dim, args.colors))

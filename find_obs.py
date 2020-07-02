@@ -1,4 +1,4 @@
-#!/usr/bin/python3.8
+#!/usr/bin/env python
 import argparse
 from multiprocessing import Pool, Manager
 from queue import Empty
