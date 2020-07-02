@@ -108,6 +108,7 @@ def is_colorable(rect: Rectangle, ncolors: int) -> bool:
         ])
 
     solver = cp_model.CpSolver()
+    solver.parameters.max_time_in_seconds = 60 * 10
     was_successful = solver.Solve(model) in [
         cp_model.FEASIBLE, cp_model.OPTIMAL
     ]
